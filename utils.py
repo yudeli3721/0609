@@ -1,193 +1,122 @@
 import streamlit as st
+from datetime import datetime, date, timedelta
+import json
+import os
 
-from datetime import datetime
-
-
-
-
-
-# 在 utils.py 最上方加入這段
+# 💡 輔助函式：自訂 JSON 序列化工具，用來處理 datetime.date 轉換問題
+class WorkflowEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (date, datetime)):
+            return obj.isoformat()
+        return super().default(obj)
 
 class AppInitializer:
+    DB_FILE = "workflow_db.json" # 💡 在地資料庫檔案名稱
 
-    @staticmethod
+    @classmethod
+    def save_data(cls):
+        """💡 核心功能：隨時將記憶體資料強制備份到 JSON 檔案中"""
+        data_to_save = {
+            "categories": st.session_state.categories,
+            "tasks": st.session_state.tasks,
+            "partners": st.session_state.partners,
+            "meetings": st.session_state.meetings,
+            "approvals": st.session_state.approvals,
+            "tags_list": st.session_state.tags_list,
+            "roles": st.session_state.roles,
+            "current_user": st.session_state.current_user
+        }
+        with open(cls.DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, cls=WorkflowEncoder, ensure_ascii=False, indent=4)
 
-    def setup():
+    @classmethod
+    def setup(cls):
+        # 1. 確保基礎核心欄位初始結構（雙重保險）
+        if 'categories' not in st.session_state:
+            st.session_state.categories = ["未指派", "進行中", "已完成"]
 
-        from datetime import date, timedelta
-
+        # 2. 💡 檢查是否有歷史存檔紀錄
         if 'tasks' not in st.session_state:
+            if os.path.exists(cls.DB_FILE):
+                try:
+                    # 讀取 JSON 檔案
+                    with open(cls.DB_FILE, "r", encoding="utf-8") as f:
+                        saved_data = json.load(f)
+                    
+                    # 還原資料至 session_state
+                    st.session_state.categories = saved_data.get("categories", ["未指派", "進行中", "已完成"])
+                    st.session_state.partners = saved_data.get("partners", ["未指派", "王大明", "陳小華", "林志玲", "闕老師"])
+                    st.session_state.current_user = saved_data.get("current_user", "闕老師")
+                    st.session_state.roles = saved_data.get("roles", {"闕老師": 2, "王大明": 1, "陳小華": 0, "林志玲": 0, "未指派": 0})
+                    st.session_state.meetings = saved_data.get("meetings", [])
+                    st.session_state.approvals = saved_data.get("approvals", [])
+                    st.session_state.tags_list = saved_data.get("tags_list", ["設計", "開發", "測試"])
+                    
+                    # 特別注意：JSON 不支援 Date 型態，讀出來是字串，必須轉回 date 物件
+                    loaded_tasks = saved_data.get("tasks", [])
+                    for t in loaded_tasks:
+                        if isinstance(t.get('due'), str):
+                            t['due'] = date.fromisoformat(t['due'])
+                    st.session_state.tasks = loaded_tasks
+                    
+                except Exception as e:
+                    # 萬一檔案損毀，安全降級使用預設初始資料
+                    st.warning(f"存檔讀取失敗，啟用預設資料。錯誤原因: {e}")
+                    cls._load_default_mock_data()
+            else:
+                # 完全沒有存檔紀錄（第一次啟動專案）
+                cls._load_default_mock_data()
+                cls.save_data() # 順手建立檔案
 
-            st.session_state.tasks = [
-
-                {"id": 1, "title": "資料庫設計", "category": "進行中", "due": date.today()+timedelta(days=2), "assignees": ["王大明"], "status": "Active", "progress": 80, "hours_spent": 4.5, "importance": "高", "urgency": "高", "history": []},
-
-                {"id": 2, "title": "API 開發", "category": "待辦事項", "due": date.today()+timedelta(days=5), "assignees": ["陳小華"], "status": "Active", "progress": 0, "hours_spent": 0.0, "importance": "高", "urgency": "低", "history": []}
-
-            ]
-
-            st.session_state.partners = ["王大明", "陳小華", "林志玲", "闕老師"]
-
-            st.session_state.current_user = "闕老師"
-
-            st.session_state.roles = {"闕老師": 2, "王大明": 1, "陳小華": 0, "林志玲": 0}
-
-            st.session_state.categories = ["待辦事項", "進行中", "已完成"]
-
-            st.session_state.meetings = []
-
-            st.session_state.approvals = []
-
-            st.session_state.tags_list = ["設計", "開發", "測試"]
-
+            # 行事曆專用常駐變數
             st.session_state.cal_year = date.today().year
-
             st.session_state.cal_month = date.today().month
-
             st.session_state.selected_date = date.today()
 
+    @classmethod
+    def _load_default_mock_data(cls):
+        """內部預設 mock 資料"""
+        st.session_state.tasks = [
+            {"id": 1, "title": "資料庫設計", "category": "進行中", "due": date.today()+timedelta(days=2), "assignee": "王大明", "status": "Active", "progress": 80, "hours_spent": 4.5, "importance": "高", "urgency": "高", "history": []},
+            {"id": 2, "title": "API 開發", "category": "未指派", "due": date.today()+timedelta(days=5), "assignee": "陳小華", "status": "Active", "progress": 0, "hours_spent": 0.0, "importance": "高", "urgency": "低", "history": []}
+        ]
+        st.session_state.partners = ["未指派", "王大明", "陳小華", "林志玲", "闕老師"]
+        st.session_state.current_user = "闕老師"
+        st.session_state.roles = {"闕老師": 2, "王大明": 1, "陳小華": 0, "林志玲": 0, "未指派": 0}
+        st.session_state.meetings = []
+        st.session_state.approvals = []
+        st.session_state.tags_list = ["設計", "開發", "測試"]
 
 
 class ViewComponents:
-
     """可重用的 UI 元件"""
-
     @staticmethod
-
     def render_filters():
-
         with st.expander("🔍 進階多維度篩選器", expanded=False):
-
             c1, c2 = st.columns(2)
-
             with c1: f_a = st.multiselect("篩選指派對象", st.session_state.partners)
-
             with c2: f_t = st.multiselect("篩選標籤", st.session_state.tags_list)
-
             return f_a, f_t
 
-
-
 class StreamFlowEngine:
-
-
-
     @staticmethod
-
     def add_log(task, message):
-
-        from datetime import datetime
-
         if 'history' not in task: task['history'] = []
-
         task['history'].append(f"[{datetime.now().strftime('%m-%d %H:%M')}] {st.session_state.current_user} {message}")
-
-
+        AppInitializer.save_data() # 💡 有寫入 log 代表任務被更動，觸發自動存檔
 
 class TaskService:
-
     """處理所有與任務相關的邏輯"""
-
     @staticmethod
-
     def get_filtered_tasks(f_assignees, f_tags, tasks=None):
-
         if tasks is None: tasks = st.session_state.tasks
-
         filtered = []
-
         for t in tasks:
-
             if t['status'] != 'Active': continue
-
-            match_assignee = (not f_assignees) or any(a in f_assignees for a in t.get('assignees', []))
-
-            match_tag = (not f_tags) or (t.get('tags') in f_tags)
-
-            if match_assignee and match_tag: filtered.append(t)
-
-        return filtered
-
-
-
-    @staticmethod
-
-    def is_task_locked(task):
-
-        locked_by = [t['title'] for t in st.session_state.tasks if t['id'] in task.get('depends_on', []) and t['category'] != '已完成' and t['status'] == 'Active']
-
-        return len(locked_by) > 0, locked_by
-
-
-
-    @staticmethod
-
-    def calculate_team_capacity():
-
-        import pandas as pd
-
-        active_tasks = [t for t in st.session_state.tasks if t['status'] == 'Active']
-
-        load_data = []
-
-        for p in st.session_state.partners:
-
-            active_count = len([t for t in active_tasks if p in t.get('assignees', []) and t['category'] == '進行中'])
-
-            ready_count = len([t for t in active_tasks if p in t.get('assignees', []) and t['category'] == '待辦事項'])
-
-            weight = (active_count * 1.0) + (ready_count * 0.3)
-
-            load_data.append({"夥伴": p, "進行中(權重1.0)": active_count, "待辦(權重0.3)": ready_count, "總負載權重": round(weight, 1)})
-
-        return pd.DataFrame(load_data)
-
-
-
-class MeetingService:
-
-    @staticmethod
-
-    def get_visible_meetings(target_date=None):
-
-        user = st.session_state.current_user
-
-        role_level = st.session_state.roles.get(user, 0)
-
-        meetings = st.session_state.meetings
-
-        visible = [m for m in meetings if (user in m['attendees'] or role_level > st.session_state.roles.get(m['owner'], 0) or user == m['owner'])]
-
-        if target_date:
-
-            visible = [m for m in visible if m['time'] == target_date]
-
-        return visible
-
-
-
-class ApprovalService:
-
-    @staticmethod
-
-    def process_action(approval, action, reason, transfer_to=None):
-
-        now_str = datetime.now().strftime('%m-%d %H:%M')
-
-        if action == "同意":
-
-            approval['status'] = "已同意"
-
-            approval['history'].append(f"[{now_str}] {st.session_state.current_user} 同意。意見: {reason}")
-
-        elif action == "駁回":
-
-            approval['status'] = "已駁回"
-
-            approval['history'].append(f"[{now_str}] {st.session_state.current_user} 駁回。意見: {reason}")
-
-        elif action == "轉交":
-
-            approval['current_signer'] = transfer_to
-
-            approval['history'].append(f"[{now_str}] {st.session_state.current_user} 轉交給 {transfer_to}。意見: {reason}")
+            
+            task_assignee = t.get('assignee', '未指派')
+            match_assignee = (not f_assignees) or (task_assignee in f_assignees)
+            
+            task_tags = t.get('tags', [])
+            if isinstance(task_tags, list):
+                match_tag = (not f_tags) or any(tag in f_tags for tag in
