@@ -38,10 +38,10 @@ class AppInitializer:
                     with open(cls.DB_FILE, "r", encoding="utf-8") as f:
                         saved_data = json.load(f)
                     st.session_state.categories = saved_data.get("categories", ["未指派", "進行中", "已完成"])
-                    # 💡 核心修正：成員名單只留真實人類
-                    st.session_state.partners = saved_data.get("partners", ["王大明", "陳小華", "林志玲", "闕老師"])
-                    st.session_state.current_user = saved_data.get("current_user", "闕老師")
-                    st.session_state.roles = saved_data.get("roles", {"闕老師": 2, "王大明": 1, "陳小華": 0, "林志玲": 0})
+                    # 💡 團隊名單更新
+                    st.session_state.partners = saved_data.get("partners", ["王大明", "陳小華", "林志玲", "乓"])
+                    st.session_state.current_user = saved_data.get("current_user", "乓")
+                    st.session_state.roles = saved_data.get("roles", {"乓": 2, "王大明": 1, "陳小華": 0, "林志玲": 0})
                     st.session_state.meetings = saved_data.get("meetings", [])
                     st.session_state.approvals = saved_data.get("approvals", [])
                     st.session_state.tags_list = saved_data.get("tags_list", ["設計", "開發", "測試"])
@@ -64,88 +64,6 @@ class AppInitializer:
 
     @classmethod
     def _load_default_mock_data(cls):
-        # 💡 核心修正：初始任務如果沒人負責，assignee 設為 None 
         st.session_state.tasks = [
             {"id": 1, "title": "資料庫設計", "category": "進行中", "due": date.today()+timedelta(days=2), "assignee": "王大明", "status": "Active", "progress": 80, "hours_spent": 4.5, "importance": "高", "urgency": "高", "history": []},
-            {"id": 2, "title": "API 開發", "category": "未指派", "due": date.today()+timedelta(days=5), "assignee": None, "status": "Active", "progress": 0, "hours_spent": 0.0, "importance": "高", "urgency": "低", "history": []}
-        ]
-        st.session_state.partners = ["王大明", "陳小華", "林志玲", "闕老師"]
-        st.session_state.current_user = "闕老師"
-        st.session_state.roles = {"闕老師": 2, "王大明": 1, "陳小華": 0, "林志玲": 0}
-        st.session_state.meetings = []
-        st.session_state.approvals = []
-        st.session_state.tags_list = ["設計", "開發", "測試"]
-
-
-class ViewComponents:
-    @staticmethod
-    def render_filters():
-        with st.expander("🔍 進階多維度篩選器", expanded=False):
-            c1, c2 = st.columns(2)
-            with c1:
-                # 篩選選單手動加上「無負責人」選項，方便過濾
-                f_a = st.multiselect("篩選指派對象", ["⚠️ 暫無負責人"] + st.session_state.partners)
-            with c2:
-                f_t = st.multiselect("篩選標籤", st.session_state.tags_list)
-            return f_a, f_t
-
-
-class StreamFlowEngine:
-    @staticmethod
-    def add_log(task, message):
-        if "history" not in task:
-            task["history"] = []
-        time_str = datetime.now().strftime("%m-%d %H:%M")
-        task["history"].append(f"[{time_str}] {st.session_state.current_user} {message}")
-        AppInitializer.save_data()
-
-
-class TaskService:
-    @staticmethod
-    def get_filtered_tasks(f_assignees, f_tags, tasks=None):
-        if tasks is None:
-            tasks = st.session_state.tasks
-        filtered = []
-        for t in tasks:
-            if t["status"] != "Active":
-                continue
-                
-            # 💡 核心修正：對應 None 的篩選邏輯
-            task_assignee = t.get("assignee")
-            if not f_assignees:
-                match_assignee = True
-            else:
-                if task_assignee is None and "⚠️ 暫無負責人" in f_assignees:
-                    match_assignee = True
-                else:
-                    match_assignee = task_assignee in f_assignees
-
-            task_tags = t.get("tags", [])
-            if isinstance(task_tags, list):
-                match_tag = (not f_tags) or any(tag in f_tags for tag in task_tags)
-            else:
-                match_tag = (not f_tags) or (task_tags in f_tags)
-                
-            if match_assignee and match_tag:
-                filtered.append(t)
-        return filtered
-
-    @staticmethod
-    def is_task_locked(task):
-        locked_by = [t["title"] for t in st.session_state.tasks if t["id"] in task.get("depends_on", []) and t["category"] != "已完成" and t["status"] == "Active"]
-        return len(locked_by) > 0, locked_by
-
-    @staticmethod
-    def calculate_team_capacity():
-        import pandas as pd
-        active_tasks = [t for t in st.session_state.tasks if t["status"] == "Active"]
-        load_data = []
-        # 💡 成員負載計算不再包含「未指派」
-        for p in st.session_state.partners:
-            active_count = len([t for t in active_tasks if t.get('assignee') == p and t['category'] == '進行中'])
-            ready_count = len([t for t in active_tasks if t.get('assignee') == p and t['category'] == '未指派'])
-            weight = (active_count * 1.0) + (ready_count * 0.3)
-            load_data.append({"夥伴": p, "進行中(權重1.0)": active_count, "待辦(權重0.3)": ready_count, "總負載權重": round(weight, 1)})
-        return pd.DataFrame(load_data)
-
-# (其餘 MeetingService, ApprovalService 保持不變...)
+            {"id": 2, "title": "API 開發", "category": "未指派", "due": date.today()+timedelta
