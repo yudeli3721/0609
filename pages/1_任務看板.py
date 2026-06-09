@@ -8,13 +8,28 @@ AppInitializer.setup()
 
 f_assignees, f_tags = ViewComponents.render_filters()
 
-with st.expander("🛠️ 看板設定（新增分類）"):
-    new_cat = st.text_input("自訂新分類/欄位名稱")
+# ===== 頂部設定區：新增分類 & 一鍵清理 =====
+with st.expander("🛠️ 看板設定（功能操作）"):
+    c_add, c_clear = st.columns(2)
+    
+    with c_add:
+        new_cat = st.text_input("自訂新分類/欄位名稱")
+        if st.button("建立欄位") and new_cat and new_cat not in st.session_state.categories:
+            st.session_state.categories.append(new_cat)
+            st.rerun()
+            
+    with c_clear:
+        st.write("🧹 任務清理")
+        # 檢查目前有沒有已完成的任務，用來決定要不要啟用按鈕（或提示數量）
+        done_tasks_count = len([t for t in st.session_state.tasks if t['category'] == '已完成'])
+        
+        if st.button(f"✨ 清除已完成任務 ({done_tasks_count})", use_container_width=True, disabled=done_tasks_count == 0):
+            # 過濾掉所有分類為「已完成」的任務，只保留其餘任務
+            st.session_state.tasks = [t for t in st.session_state.tasks if t['category'] != '已完成']
+            st.success("已成功清理所有已完成的任務！")
+            st.rerun()
 
-    if st.button("建立欄位") and new_cat and new_cat not in st.session_state.categories:
-        st.session_state.categories.append(new_cat)
-        st.rerun()
-
+# ===== 看板欄位渲染 =====
 cols = st.columns(len(st.session_state.categories))
 
 for idx, col in enumerate(cols):
@@ -45,7 +60,7 @@ for idx, col in enumerate(cols):
 
                 with st.expander("📝 詳細設定與回報"):
 
-                    # ===== 新增重要 / 緊急（修正縮排）=====
+                    # ===== 重要 / 緊急 =====
                     new_imp = st.selectbox(
                         "重要度",
                         ["高", "低"],
