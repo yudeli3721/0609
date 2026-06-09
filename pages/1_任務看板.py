@@ -208,29 +208,33 @@ for idx, col in enumerate(cols):
                 st.progress(float(t.get('progress', 0)) / 100.0)
 
 
-                # ===== ⚡ 核心優化：使用 st.form 建立獨立儲存確認機制 =====
+                # ===== 📝 詳細設定與回報 (包含動態調整截止日) =====
                 with st.expander("📝 詳細設定與回報"):
                     with st.form(key=f"task_form_{t['id']}"):
                         
-                        # 1. 變更負責人下拉選單
+                        # 1. 指派負責人
                         assignee_options = ["-- 尚未指派 (等待認領) --"] + st.session_state.partners
                         current_idx = assignee_options.index(t.get('assignee')) if t.get('assignee') in st.session_state.partners else 0
                         selected_opt = st.selectbox("👤 變更負責人", assignee_options, index=current_idx)
                         
                         st.divider()
 
-                        # 2. 優先級設定
+                        # 2. 💡 變更截止日期 (新增於表單內，可隨時調整)
+                        current_due_date = t.get('due', date.today())
+                        new_due_date = st.date_input("📅 調整截止日期", value=current_due_date)
+
+                        # 3. 優先級設定
                         new_imp = st.selectbox("重要度", ["高", "低"], index=0 if t.get("importance") == "高" else 1)
                         new_urg = st.selectbox("緊急度", ["高", "低"], index=0 if t.get("urgency") == "高" else 1)
 
-                        # 3. 進度與工時
+                        # 4. 進度與工時
                         new_prog = st.slider("完成進度 (%)", 0, 100, int(t.get('progress', 0)))
                         add_h = st.number_input("➕ 新增本次工時 (小時)", min_value=0.0, step=0.5)
 
-                        # 4. 備註欄
+                        # 5. 備註欄
                         new_notes = st.text_area("備註說明", value=t.get('notes', ''))
 
-                        # 5. 💡 實體確認更新按鍵 (按下才會寫入並重整)
+                        # 6. 確認更新按鍵
                         submit_settings = st.form_submit_button("💾 儲存並更新卡片設定", use_container_width=True)
                         
                         if submit_settings:
@@ -243,6 +247,12 @@ for idx, col in enumerate(cols):
                                 new_name = target_assignee_value if target_assignee_value else "未指派"
                                 engine.add_log(t, f"將負責人從「{old_name}」變更為「{new_name}」")
                                 t['assignee'] = target_assignee_value
+                                has_changed = True
+
+                            # 💡 判定截止日期異動
+                            if new_due_date != current_due_date:
+                                engine.add_log(t, f"將截止日期從 {current_due_date} 調整為 {new_due_date}")
+                                t['due'] = new_due_date
                                 has_changed = True
                                 
                             # 判定優先級異動
@@ -268,10 +278,10 @@ for idx, col in enumerate(cols):
                                 t['notes'] = new_notes
                                 has_changed = True
                                 
-                            # 有任何變更才儲存資料庫並觸發畫面重整
+                            # 儲存資料庫並重整
                             if has_changed:
                                 AppInitializer.save_data()
-                                st.toast(f"👍 「{t['title']}」設定已成功儲存！")
+                                st.toast(f"👍 「{t['title']}」最新設定已成功儲存！")
                                 st.rerun()
 
                     st.markdown("🔗 **變更歷史軌跡**")
@@ -280,7 +290,7 @@ for idx, col in enumerate(cols):
                             st.caption(log)
 
 
-                # ===== 🚀 跨欄位移動 (保持原本選取即時重整的直覺體驗) =====
+                # ===== 🚀 跨欄位移動 =====
                 new_status = st.selectbox(
                     "🚀 移動卡片至欄位",
                     st.session_state.categories,
