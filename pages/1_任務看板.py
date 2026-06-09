@@ -43,7 +43,7 @@ with c_sort:
 with st.expander("🛠️ 看板設定與團隊成員管理面板", expanded=False):
     c_add, c_partner, c_clear = st.columns(3)
     
-    # 【區塊一：看板自訂欄位管理 - 內建核心防護鎖】
+    # 【區塊一：看板自訂欄位管理】
     with c_add:
         st.markdown("📂 **看板欄位自訂**")
         new_cat = st.text_input("自訂新分類/欄位名稱", key="add_new_cat_input")
@@ -56,7 +56,6 @@ with st.expander("🛠️ 看板設定與團隊成員管理面板", expanded=Fal
         
         st.divider()
         
-        # 篩選掉不可刪除的核心欄位，讓使用者在下拉選單中「根本選不到核心欄位」來進行刪除，達成物理防護
         deletable_categories = [cat for cat in st.session_state.categories if cat not in core_categories]
         
         if deletable_categories:
@@ -73,14 +72,14 @@ with st.expander("🛠️ 看板設定與團隊成員管理面板", expanded=Fal
         else:
             st.caption("ℹ️ 當前僅有系統核心欄位（未指派/進行中/已完成），皆受系統保護不可刪除。")
             
-    # 【區塊二：團隊成員管理 - 綁定彈出視窗】
+    # 【區塊二：團隊成員管理】
     with c_partner:
         st.markdown("👥 **團隊成員名冊**")
         new_partner = st.text_input("輸入新成員姓名", key="add_new_partner_input")
         if st.button("➕ 邀請新夥伴加入", use_container_width=True) and new_partner:
             if new_partner not in st.session_state.partners:
                 st.session_state.partners.append(new_partner)
-                st.session_state.roles[new_partner] = 0 # 預設一般權限
+                st.session_state.roles[new_partner] = 0
                 AppInitializer.save_data()
                 show_success_dialog(new_partner)
             else:
@@ -114,7 +113,7 @@ with st.expander("🛠️ 看板設定與團隊成員管理面板", expanded=Fal
             st.rerun()
 
 
-# ===== ⚡ 4. 核心功能：在「未指派」底下直接新增任務 =====
+# ===== ⚡ 4. 快速建立新任務 =====
 with st.container(border=True):
     st.markdown("### ➕ 快速建立新任務（自動分流至「未指派」欄位）")
     c_title, c_due, c_tags_sel = st.columns([2, 1, 1])
@@ -155,26 +154,22 @@ with st.container(border=True):
 st.write("") 
 
 
-# ===== 🗂️ 5. 看板多列動態欄位渲染 (Kanban Columns) =====
+# ===== 🗂️ 5. 看板多列動態欄位渲染 =====
 cols = st.columns(len(st.session_state.categories))
 
 for idx, col in enumerate(cols):
     cat_name = st.session_state.categories[idx]
 
     with col:
-        # 💡 已移除字串前的 🔒 鎖頭圖示
         st.markdown(f"#### 📁 {cat_name}")
         st.divider()
 
-        # 自動撈出該欄位中、符合當前上方篩選條件的卡片
         cat_tasks = TaskService.get_filtered_tasks(f_assignees, f_tags, [t for t in st.session_state.tasks if t['category'] == cat_name])
 
-        # 實時關鍵字過濾
         if search_query:
             q = search_query.lower()
             cat_tasks = [t for t in cat_tasks if (q in t['title'].lower()) or (q in t.get('notes', '').lower())]
 
-        # 依優先級排序
         def get_priority_weight(task):
             imp = task.get('importance', '低')
             urg = task.get('urgency', '低')
@@ -196,7 +191,6 @@ for idx, col in enumerate(cols):
                 is_due_today = (t['due'] == today and t['category'] != '已完成')
                 
                 if is_locked:
-                    # 💡 這裡保留任務相依性「被鎖定」提示，但移除了標題前多餘的圖示
                     st.markdown(f"### {t['title']}")
                     st.error(f"等待前置任務完成: {', '.join(locked_by)}")
                 else:
@@ -205,7 +199,6 @@ for idx, col in enumerate(cols):
                     else:
                         st.markdown(f"### 📌 {t['title']}")
 
-                # 印出精緻摘要
                 display_assignee = t.get('assignee') if t.get('assignee') else "💡 暫無負責人"
                 st.caption(f"👤 負責人: **{display_assignee}**")
                 st.caption(f"🎯 優先級: 重{t.get('importance','低')} | 🚀 急{t.get('urgency','低')}")
@@ -214,54 +207,80 @@ for idx, col in enumerate(cols):
                     st.markdown(" ".join([f"`{tag}`" for tag in t['tags']]))
                 st.progress(float(t.get('progress', 0)) / 100.0)
 
-                # 卡片展開詳情與回報
+
+                # ===== ⚡ 核心優化：使用 st.form 建立獨立儲存確認機制 =====
                 with st.expander("📝 詳細設定與回報"):
-                    assignee_options = ["-- 尚未指派 (等待認領) --"] + st.session_state.partners
-                    current_idx = assignee_options.index(t.get('assignee')) if t.get('assignee') in st.session_state.partners else 0
+                    with st.form(key=f"task_form_{t['id']}"):
                         
-                    selected_opt = st.selectbox("👤 變更負責人", assignee_options, index=current_idx, key=f"assignee_{t['id']}")
-                    target_assignee_value = None if selected_opt == "-- 尚未指派 (等待認領) --" else selected_opt
-                    
-                    if target_assignee_value != t.get('assignee'):
-                        old_name = t.get('assignee') if t.get('assignee') else "未指派"
-                        new_name = target_assignee_value if target_assignee_value else "未指派"
-                        engine.add_log(t, f"將負責人從「{old_name}」變更為「{new_name}」")
-                        t['assignee'] = target_assignee_value
-                        st.rerun()
+                        # 1. 變更負責人下拉選單
+                        assignee_options = ["-- 尚未指派 (等待認領) --"] + st.session_state.partners
+                        current_idx = assignee_options.index(t.get('assignee')) if t.get('assignee') in st.session_state.partners else 0
+                        selected_opt = st.selectbox("👤 變更負責人", assignee_options, index=current_idx)
+                        
+                        st.divider()
 
-                    st.divider()
+                        # 2. 優先級設定
+                        new_imp = st.selectbox("重要度", ["高", "低"], index=0 if t.get("importance") == "高" else 1)
+                        new_urg = st.selectbox("緊急度", ["高", "低"], index=0 if t.get("urgency") == "高" else 1)
 
-                    new_imp = st.selectbox("重要度", ["高", "低"], index=0 if t.get("importance") == "高" else 1, key=f"imp_{t['id']}")
-                    new_urg = st.selectbox("緊急度", ["高", "低"], index=0 if t.get("urgency") == "高" else 1, key=f"urg_{t['id']}")
-                    if (new_imp != t.get('importance')) or (new_urg != t.get('urgency')):
-                        t['importance'] = new_imp
-                        t['urgency'] = new_urg
-                        AppInitializer.save_data()
-                        st.rerun()
+                        # 3. 進度與工時
+                        new_prog = st.slider("完成進度 (%)", 0, 100, int(t.get('progress', 0)))
+                        add_h = st.number_input("➕ 新增本次工時 (小時)", min_value=0.0, step=0.5)
 
-                    new_prog = st.slider("完成進度 (%)", 0, 100, int(t.get('progress', 0)), key=f"prog_{t['id']}")
-                    if new_prog != t.get('progress'):
-                        t['progress'] = new_prog
-                        engine.add_log(t, f"更新進度至 {new_prog}%")
-                        st.rerun()
+                        # 4. 備註欄
+                        new_notes = st.text_area("備註說明", value=t.get('notes', ''))
 
-                    add_h = st.number_input("➕ 新增本次工時", min_value=0.0, step=0.5, key=f"add_h_{t['id']}")
-                    if st.button("送出工時", key=f"btn_h_{t['id']}") and add_h > 0:
-                        t['hours_spent'] = float(t.get('hours_spent', 0)) + float(add_h)
-                        engine.add_log(t, f"投入工時 {add_h} 小時")
-                        st.rerun()
-
-                    old_notes = t.get('notes', '')
-                    t['notes'] = st.text_area("備註說明", value=old_notes, key=f"note_{t['id']}")
-                    if t['notes'] != old_notes:
-                        AppInitializer.save_data()
+                        # 5. 💡 實體確認更新按鍵 (按下才會寫入並重整)
+                        submit_settings = st.form_submit_button("💾 儲存並更新卡片設定", use_container_width=True)
+                        
+                        if submit_settings:
+                            has_changed = False
+                            
+                            # 判定負責人異動
+                            target_assignee_value = None if selected_opt == "-- 尚未指派 (等待認領) --" else selected_opt
+                            if target_assignee_value != t.get('assignee'):
+                                old_name = t.get('assignee') if t.get('assignee') else "未指派"
+                                new_name = target_assignee_value if target_assignee_value else "未指派"
+                                engine.add_log(t, f"將負責人從「{old_name}」變更為「{new_name}」")
+                                t['assignee'] = target_assignee_value
+                                has_changed = True
+                                
+                            # 判定優先級異動
+                            if (new_imp != t.get('importance')) or (new_urg != t.get('urgency')):
+                                t['importance'] = new_imp
+                                t['urgency'] = new_urg
+                                has_changed = True
+                                
+                            # 判定進度異動
+                            if new_prog != t.get('progress'):
+                                engine.add_log(t, f"更新進度至 {new_prog}%")
+                                t['progress'] = new_prog
+                                has_changed = True
+                                
+                            # 判定追加工時
+                            if add_h > 0:
+                                t['hours_spent'] = float(t.get('hours_spent', 0)) + float(add_h)
+                                engine.add_log(t, f"投入工時 {add_h} 小時")
+                                has_changed = True
+                                
+                            # 判定備註異動
+                            if new_notes != t.get('notes', ''):
+                                t['notes'] = new_notes
+                                has_changed = True
+                                
+                            # 有任何變更才儲存資料庫並觸發畫面重整
+                            if has_changed:
+                                AppInitializer.save_data()
+                                st.toast(f"👍 「{t['title']}」設定已成功儲存！")
+                                st.rerun()
 
                     st.markdown("🔗 **變更歷史軌跡**")
                     with st.container(height=110):
                         for log in reversed(t.get('history', [])):
                             st.caption(log)
 
-                # 快速跨欄位移動
+
+                # ===== 🚀 跨欄位移動 (保持原本選取即時重整的直覺體驗) =====
                 new_status = st.selectbox(
                     "🚀 移動卡片至欄位",
                     st.session_state.categories,
