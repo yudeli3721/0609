@@ -1,10 +1,14 @@
 import streamlit as st
 from utils import ViewComponents, TaskService, StreamFlowEngine as engine
 from utils import AppInitializer
+from datetime import date  # <--- 💡 引入 date 用於比對今日日期
 
 st.header("📋 任務看板")
 
 AppInitializer.setup()
+
+# 獲取今天的日期
+today = date.today()
 
 f_assignees, f_tags = ViewComponents.render_filters()
 
@@ -20,11 +24,9 @@ with st.expander("🛠️ 看板設定（功能操作）"):
             
     with c_clear:
         st.write("🧹 任務清理")
-        # 檢查目前有沒有已完成的任務，用來決定要不要啟用按鈕（或提示數量）
         done_tasks_count = len([t for t in st.session_state.tasks if t['category'] == '已完成'])
         
         if st.button(f"✨ 清除已完成任務 ({done_tasks_count})", use_container_width=True, disabled=done_tasks_count == 0):
-            # 過濾掉所有分類為「已完成」的任務，只保留其餘任務
             st.session_state.tasks = [t for t in st.session_state.tasks if t['category'] != '已完成']
             st.success("已成功清理所有已完成的任務！")
             st.rerun()
@@ -49,11 +51,25 @@ for idx, col in enumerate(cols):
             with st.container(border=True):
                 is_locked, locked_by = TaskService.is_task_locked(t)
 
+                # ===== 💡 今日截止動態紅字警示 =====
+                # 判斷任務截止日是否為今天，且該任務尚未「已完成」
+                is_due_today = (t['due'] == today and t['category'] != '已完成')
+                
                 if is_locked:
-                    st.markdown(f"### 🔒 {t['title']}")
+                    # 如果前置任務未完成（鎖定中）
+                    title_text = f"🔒 {t['title']}"
+                    if is_due_today:
+                        st.markdown(f"### :red[{title_text} (今日截止!)]")
+                    else:
+                        st.markdown(f"### {title_text}")
                     st.error(f"等待前置：{', '.join(locked_by)}")
                 else:
-                    st.markdown(f"### 📌 {t['title']}")
+                    # 正常可執行的任務
+                    title_text = f"📌 {t['title']}"
+                    if is_due_today:
+                        st.markdown(f"### :red[{title_text} (今日截止!)]")
+                    else:
+                        st.markdown(f"### {title_text}")
 
                 st.caption(f"📅 {t['due']} | ⏱️ 累計工時: {t.get('hours_spent', 0)}h")
                 st.progress(t.get('progress', 0) / 100.0)
