@@ -39,7 +39,7 @@ with c_sort:
     sort_order = st.selectbox("排序依據", ["預設排序", "優先級：高 ➔ 低", "優先級：低 ➔ 高"])
 
 
-# ===== ⚙️ 3. 頂部管理面版（含核心欄位防護、成員成功彈窗） =====
+# ===== ⚙️ 3. 頂部管理面版 =====
 with st.expander("🛠️ 看板設定與團隊成員管理面板", expanded=False):
     c_add, c_partner, c_clear = st.columns(3)
     
@@ -71,7 +71,7 @@ with st.expander("🛠️ 看板設定與團隊成員管理面板", expanded=Fal
                     st.toast(f"已成功移除欄位「{del_cat}」")
                     st.rerun()
         else:
-            st.caption("🔒 當前僅有系統核心欄位（未指派/進行中/已完成），皆受系統保護不可刪除。")
+            st.caption("ℹ️ 當前僅有系統核心欄位（未指派/進行中/已完成），皆受系統保護不可刪除。")
             
     # 【區塊二：團隊成員管理 - 綁定彈出視窗】
     with c_partner:
@@ -82,7 +82,6 @@ with st.expander("🛠️ 看板設定與團隊成員管理面板", expanded=Fal
                 st.session_state.partners.append(new_partner)
                 st.session_state.roles[new_partner] = 0 # 預設一般權限
                 AppInitializer.save_data()
-                # 💡 觸發上方定義的彈出視窗
                 show_success_dialog(new_partner)
             else:
                 st.warning("該成員姓名已存在於團隊名單中。")
@@ -94,7 +93,7 @@ with st.expander("🛠️ 看板設定與團隊成員管理面板", expanded=Fal
             if st.button("❌ 移除此成員身分", use_container_width=True):
                 active_tasks_count = len([t for t in st.session_state.tasks if t.get('assignee') == del_partner and t['category'] != '已完成'])
                 if active_tasks_count > 0:
-                    st.error(f"⚠️ 無法移除！{del_partner} 身上還有 {active_tasks_count} 個未結案任務。")
+                    st.error(f"⚠️ 無法移除！{del_partner} 身上還有 {active_tasks_count} 個未完成任務。")
                 else:
                     st.session_state.partners.remove(del_partner)
                     if del_partner in st.session_state.roles:
@@ -125,23 +124,20 @@ with st.container(border=True):
     with c_due:
         new_task_due = st.date_input("📅 預計截止日期", date.today() + timedelta(days=3), key="fast_task_due")
     with c_tags_sel:
-        # 允許使用者在建立任務時直接選取合適的標籤（多選）
         new_task_tags = st.multiselect("🏷️ 任務標籤", st.session_state.tags_list, key="fast_task_tags")
         
     if st.button("🚀 發布並新增至未指派欄位", use_container_width=True):
         if not new_task_title.strip():
             st.error("❌ 任務名稱不可為空！")
         else:
-            # 計算出全系統最高的新 ID
             new_id = max([t['id'] for t in st.session_state.tasks]) + 1 if st.session_state.tasks else 1
             
-            # 建立任務結構：預設分流至 "未指派" 欄位，且負責人 (assignee) 為 None
             new_task_obj = {
                 "id": new_id,
                 "title": new_task_title.strip(),
-                "category": "未指派",  # 👈 核心鎖定：新任務一律出現在未指派底層
+                "category": "未指派",  
                 "due": new_task_due,
-                "assignee": None,       # 👈 核心鎖定：未指派狀態下沒有實體負責人
+                "assignee": None,       
                 "status": "Active",
                 "progress": 0,
                 "hours_spent": 0.0,
@@ -151,12 +147,12 @@ with st.container(border=True):
                 "history": [f"[{date.today().strftime('%m-%d')}] 由 {st.session_state.current_user} 成功建立任務並歸類於未指派。"]
             }
             st.session_state.tasks.append(new_task_obj)
-            AppInitializer.save_data() # 即時持久化同步到 JSON 檔案
+            AppInitializer.save_data() 
             st.toast(f"🎉 成功建立任務「{new_task_title}」！")
             st.rerun()
 
 
-st.write("") # 增加排版美觀間距
+st.write("") 
 
 
 # ===== 🗂️ 5. 看板多列動態欄位渲染 (Kanban Columns) =====
@@ -166,11 +162,8 @@ for idx, col in enumerate(cols):
     cat_name = st.session_state.categories[idx]
 
     with col:
-        # 如果是核心三大基礎欄位，特別加上 🔒 圖示標註其不可動性
-        if cat_name in core_categories:
-            st.markdown(f"#### 🔒 {cat_name}")
-        else:
-            st.markdown(f"#### 📁 {cat_name}")
+        # 💡 已移除字串前的 🔒 鎖頭圖示
+        st.markdown(f"#### 📁 {cat_name}")
         st.divider()
 
         # 自動撈出該欄位中、符合當前上方篩選條件的卡片
@@ -203,7 +196,8 @@ for idx, col in enumerate(cols):
                 is_due_today = (t['due'] == today and t['category'] != '已完成')
                 
                 if is_locked:
-                    st.markdown(f"### 🔒 {t['title']}")
+                    # 💡 這裡保留任務相依性「被鎖定」提示，但移除了標題前多餘的圖示
+                    st.markdown(f"### {t['title']}")
                     st.error(f"等待前置任務完成: {', '.join(locked_by)}")
                 else:
                     if is_due_today:
@@ -267,7 +261,7 @@ for idx, col in enumerate(cols):
                         for log in reversed(t.get('history', [])):
                             st.caption(log)
 
-                # ===== ⚡ 核心功能：各任務能隨時調整移動到各欄位 =====
+                # 快速跨欄位移動
                 new_status = st.selectbox(
                     "🚀 移動卡片至欄位",
                     st.session_state.categories,
@@ -276,12 +270,10 @@ for idx, col in enumerate(cols):
                     disabled=is_locked
                 )
 
-                # 當使用者切換下拉選單，狀態不等於目前欄位名時，立刻觸發異動
                 if (new_status != t['category']) and (not is_locked):
                     engine.add_log(t, f"將狀態從「{t['category']}」移至「{new_status}」欄位")
                     t['category'] = new_status
                     
-                    # 如果移到已完成，加個撒花特效增加操作趣味性
                     if new_status == "已完成":
                         st.balloons()
                         st.toast(f"🎉 太棒了！任務「{t['title']}」已順利結案！")
